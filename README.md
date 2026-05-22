@@ -12,7 +12,7 @@ A real-time network packet analyzer built with Python. Captures live traffic fro
 ### Active capture
 ![Active capture](docs/screenshots/active.png)
 
-### Heavy traffic with IPv6
+### Heavy traffic
 ![Heavy traffic](docs/screenshots/traffic.png)
 
 ---
