@@ -60,7 +60,7 @@ packet-analyzer/
 │   ├── test_sniffer.py
 │   ├── test_parser.py
 │   └── test_analyzer.py
-├── exports/             # CSV output (git ignored)
+├── exports/             # CSV output
 ├── docs/screenshots/
 └── requirements.txt
 ```
