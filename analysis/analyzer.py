@@ -1,15 +1,14 @@
+import threading
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
-from collections import defaultdict
 
 
 class PacketAnalyzer:
     def __init__(self, port_scan_threshold=15):
         self.port_scan_threshold = port_scan_threshold
         self._rows = []
-        self._df = None
+        self._lock = threading.Lock()
 
     # --- Dodavanje paketa ---
 
@@ -37,8 +36,8 @@ class PacketAnalyzer:
             row["dst_port"] = parsed["udp"]["dst_port"]
             row["service"]  = parsed["udp"]["service"]
 
-        self._rows.append(row)
-        self._df = None  # resetuj keš
+        with self._lock:
+            self._rows.append(row)
 
     # --- Statistike ---
 
@@ -47,15 +46,18 @@ class PacketAnalyzer:
         if df.empty:
             return {"error": "Nema paketa"}
 
+        def to_str_keys(series):
+            return {str(k): int(v) for k, v in series.items()}
+
         return {
-            "total_packets":        len(df),
-            "protocol_counts":      df["protocol"].value_counts().to_dict(),
-            "top_src_ips":          df["src_ip"].value_counts().head(5).to_dict(),
-            "top_dst_ips":          df["dst_ip"].value_counts().head(5).to_dict(),
-            "top_dst_ports":        df["dst_port"].value_counts().head(5).to_dict(),
-            "top_services":         df["service"].value_counts().head(5).to_dict(),
-            "unique_src_ips":       int(df["src_ip"].nunique()),
-            "unique_dst_ports":     int(df["dst_port"].nunique()),
+            "total_packets":    len(df),
+            "protocol_counts":  to_str_keys(df["protocol"].value_counts().head(10)),
+            "top_src_ips":      to_str_keys(df["src_ip"].value_counts().head(5)),
+            "top_dst_ips":      to_str_keys(df["dst_ip"].value_counts().head(5)),
+            "top_dst_ports":    to_str_keys(df["dst_port"].value_counts().head(5)),
+            "top_services":     to_str_keys(df["service"].value_counts().head(5)),
+            "unique_src_ips":   int(df["src_ip"].nunique()),
+            "unique_dst_ports": int(df["dst_port"].nunique()),
         }
 
     # --- Port scan detekcija ---
@@ -65,7 +67,7 @@ class PacketAnalyzer:
         if df.empty:
             return []
 
-        tcp_df = df[df["protocol"] == "TCP"].dropna(subset=["src_ip", "dst_port"])
+        tcp_df = df[df["protocol"].isin(["TCP", "TCP6"])].dropna(subset=["src_ip", "dst_port"])
         port_counts = tcp_df.groupby("src_ip")["dst_port"].nunique()
         suspects = port_counts[port_counts >= self.port_scan_threshold]
 
@@ -75,7 +77,7 @@ class PacketAnalyzer:
             result.append({
                 "ip":           ip,
                 "unique_ports": int(count),
-                "ports":        ports[:20],
+                "ports":        [int(p) for p in ports[:20]],
             })
         return result
 
@@ -96,7 +98,6 @@ class PacketAnalyzer:
 
         if save_path:
             plt.savefig(save_path)
-            print(f"Grafik sacuvan: {save_path}")
         else:
             plt.show()
         plt.close()
@@ -122,7 +123,6 @@ class PacketAnalyzer:
 
         if save_path:
             plt.savefig(save_path)
-            print(f"Grafik sacuvan: {save_path}")
         else:
             plt.show()
         plt.close()
@@ -137,9 +137,7 @@ class PacketAnalyzer:
     # --- Interni helper ---
 
     def _get_df(self) -> pd.DataFrame:
-        if self._df is None:
-            self._df = pd.DataFrame(self._rows)
-            for col in ("src_port", "dst_port"):
-                if col in self._df.columns:
-                    self._df[col] = self._df[col].astype("Int64")
-        return self._df
+        with self._lock:
+            rows_copy = list(self._rows)
+        df = pd.DataFrame(rows_copy)
+        return df

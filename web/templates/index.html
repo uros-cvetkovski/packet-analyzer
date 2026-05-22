@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Packet Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      background: #1a1d27;
+      border-bottom: 1px solid #2a2d3e;
+    }
+
+    header h1 { font-size: 1.2rem; color: #7eb8f7; letter-spacing: 1px; }
+
+    .controls { display: flex; gap: 10px; align-items: center; }
+
+    button {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    #btn-start { background: #4caf50; color: #fff; }
+    #btn-stop  { background: #e53935; color: #fff; }
+    #btn-csv   { background: #2a2d3e; color: #aaa; border: 1px solid #3a3d4e; }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      display: inline-block;
+    }
+    .status-dot.active { background: #4caf50; animation: pulse 1.2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      grid-template-rows: auto auto;
+      gap: 16px;
+      padding: 20px 28px;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3e;
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+
+    .card h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 14px;
+    }
+
+    /* Stat numbers */
+    .stat-item { margin-bottom: 12px; }
+    .stat-label { font-size: 0.75rem; color: #888; }
+    .stat-value { font-size: 1.4rem; font-weight: 700; color: #7eb8f7; }
+
+    /* Charts */
+    .chart-card { grid-column: 2; }
+    .timeline-card { grid-column: 1 / -1; }
+
+    canvas { max-height: 220px; }
+
+    /* Table */
+    .table-card { grid-column: 1 / -1; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th {
+      text-align: left;
+      padding: 7px 10px;
+      color: #666;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #2a2d3e;
+    }
+    td { padding: 7px 10px; border-bottom: 1px solid #1e2130; }
+    tr:hover td { background: #1e2130; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .badge-TCP     { background: #1a3a5c; color: #7eb8f7; }
+    .badge-UDP     { background: #2d3b1f; color: #8bc34a; }
+    .badge-DNS     { background: #3b2a1f; color: #ff9800; }
+    .badge-ARP     { background: #2a1f3b; color: #ce93d8; }
+    .badge-IPv6    { background: #1a3b3b; color: #4dd0e1; }
+    .badge-TCP6    { background: #1a2a3b; color: #4dd0e1; }
+    .badge-UDP6    { background: #1f2d2d; color: #80cbc4; }
+    .badge-UNKNOWN { background: #2a2a2a; color: #888; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ PACKET ANALYZER</h1>
+  <div class="controls">
+    <span class="status-dot" id="status-dot"></span>
+    <button id="btn-start" onclick="startCapture()">Start</button>
+    <button id="btn-stop"  onclick="stopCapture()">Stop</button>
+    <button id="btn-csv"   onclick="exportCsv()">Export CSV</button>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- Statistike -->
+  <div class="card">
+    <h2>Statistike</h2>
+    <div class="stat-item">
+      <div class="stat-label">Ukupno paketa</div>
+      <div class="stat-value" id="s-total">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Unique src IP</div>
+      <div class="stat-value" id="s-ips">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Unique portovi</div>
+      <div class="stat-value" id="s-ports">—</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Ispušteni</div>
+      <div class="stat-value" id="s-dropped">—</div>
+    </div>
+  </div>
+
+  <!-- Protocol chart -->
+  <div class="card chart-card">
+    <h2>Distribucija protokola</h2>
+    <canvas id="proto-chart"></canvas>
+  </div>
+
+  <!-- Timeline -->
+  <div class="card timeline-card">
+    <h2>Aktivnost kroz vreme</h2>
+    <canvas id="time-chart"></canvas>
+  </div>
+
+  <!-- Packet table -->
+  <div class="card table-card">
+    <h2>Poslednji paketi</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Protokol</th>
+          <th>Src IP</th>
+          <th>Dst IP</th>
+          <th>Servis</th>
+          <th>Flags / DNS</th>
+        </tr>
+      </thead>
+      <tbody id="packet-tbody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  // --- Chart.js inicijalizacija ---
+  const PROTO_COLORS = {
+    TCP: '#7eb8f7', UDP: '#8bc34a', DNS: '#ff9800',
+    ARP: '#ce93d8', IPv6: '#4dd0e1', TCP6: '#4dd0e1',
+    UDP6: '#80cbc4', UNKNOWN: '#888'
+  };
+
+  const protoChart = new Chart(document.getElementById('proto-chart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 5 }] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: '#2a2d3e' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#2a2d3e' } }
+      }
+    }
+  });
+
+  const timeChart = new Chart(document.getElementById('time-chart'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: '#7eb8f7',
+        backgroundColor: 'rgba(126,184,247,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#2a2d3e' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#2a2d3e' }, beginAtZero: true }
+      }
+    }
+  });
+
+  // Pratimo pakete po sekundi lokalno
+  const timeSeries = {};
+
+  // --- API pozivi ---
+  async function startCapture() {
+    await fetch('/api/start', { method: 'POST' });
+  }
+
+  async function stopCapture() {
+    await fetch('/api/stop', { method: 'POST' });
+  }
+
+  function exportCsv() {
+    window.location = '/api/export/csv';
+  }
+
+  // --- Polling svakih 2 sekunde ---
+  async function refresh() {
+    try {
+      const statsRes = await fetch('/api/stats');
+      const stats    = await statsRes.json();
+
+      updateStats(stats);
+      updateProtoChart(stats.protocol_counts || {});
+      updateStatusDot(stats.is_running);
+
+      // Tabelu i timeline osvežavamo samo dok sniffer radi
+      if (stats.is_running) {
+        const packetsRes = await fetch('/api/packets');
+        const packets    = await packetsRes.json();
+        updateTable(packets);
+        updateTimeline(packets);
+      }
+    } catch (e) { /* server možda još nije spreman */ }
+  }
+
+  function updateStats(s) {
+    document.getElementById('s-total').textContent   = s.total_packets   ?? '—';
+    document.getElementById('s-ips').textContent     = s.unique_src_ips  ?? '—';
+    document.getElementById('s-ports').textContent   = s.unique_dst_ports ?? '—';
+    document.getElementById('s-dropped').textContent = s.sniffer?.dropped ?? '—';
+  }
+
+  function updateProtoChart(counts) {
+    const labels = Object.keys(counts);
+    const values = Object.values(counts);
+    const colors = labels.map(l => PROTO_COLORS[l] || '#888');
+    protoChart.data.labels = labels;
+    protoChart.data.datasets[0].data = values;
+    protoChart.data.datasets[0].backgroundColor = colors;
+    protoChart.update('none');
+  }
+
+  function updateTimeline(packets) {
+    packets.forEach(() => {
+      const sec = new Date().toLocaleTimeString();
+      timeSeries[sec] = (timeSeries[sec] || 0) + 1;
+    });
+
+    const keys = Object.keys(timeSeries).slice(-30);
+    timeChart.data.labels = keys;
+    timeChart.data.datasets[0].data = keys.map(k => timeSeries[k]);
+    timeChart.update('none');
+  }
+
+  function updateTable(packets) {
+    const tbody = document.getElementById('packet-tbody');
+    tbody.innerHTML = packets.slice(0, 30).map(p => `
+      <tr>
+        <td><span class="badge badge-${p.protocol}">${p.protocol}</span></td>
+        <td>${p.src_ip || '—'}</td>
+        <td>${p.dst_ip || '—'}</td>
+        <td>${p.service || '—'}</td>
+        <td>${p.dns || p.flags || '—'}</td>
+      </tr>
+    `).join('');
+  }
+
+  function updateStatusDot(running) {
+    const dot = document.getElementById('status-dot');
+    dot.classList.toggle('active', running);
+    dot.style.background = running ? '#4caf50' : '#e53935';
+  }
+
+  setInterval(refresh, 2000);
+  refresh();
+</script>
+</body>
+</html>

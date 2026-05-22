@@ -1,5 +1,5 @@
 import time
-from scapy.all import Ether, IP, TCP, UDP, DNS, ARP, DNSQR
+from scapy.all import Ether, IP, IPv6, TCP, UDP, DNS, ARP, DNSQR
 
 
 def parse_packet(packet) -> dict:
@@ -36,7 +36,46 @@ def parse_packet(packet) -> dict:
         }
         return result
 
-    # --- IP ---
+    # --- IPv6 ---
+    if packet.haslayer(IPv6):
+        ip6 = packet[IPv6]
+        result["ip"] = {
+            "src": ip6.src,
+            "dst": ip6.dst,
+            "ttl": ip6.hlim,
+            "protocol": ip6.nh,
+        }
+
+        if packet.haslayer(TCP):
+            tcp = packet[TCP]
+            result["protocol"] = "TCP6"
+            result["tcp"] = {
+                "src_port": tcp.sport,
+                "dst_port": tcp.dport,
+                "flags": _tcp_flags(tcp.flags),
+                "service": _port_to_service(tcp.dport),
+            }
+            if packet.haslayer(DNS):
+                result["protocol"] = "DNS"
+                result["dns"] = _parse_dns(packet)
+        elif packet.haslayer(UDP):
+            udp = packet[UDP]
+            result["protocol"] = "UDP6"
+            result["udp"] = {
+                "src_port": udp.sport,
+                "dst_port": udp.dport,
+                "length": udp.len,
+                "service": _port_to_service(udp.dport),
+            }
+            if packet.haslayer(DNS):
+                result["protocol"] = "DNS"
+                result["dns"] = _parse_dns(packet)
+        else:
+            result["protocol"] = "IPv6"
+
+        return result
+
+    # --- IPv4 ---
     if packet.haslayer(IP):
         ip = packet[IP]
         result["ip"] = {

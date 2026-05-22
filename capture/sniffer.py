@@ -37,12 +37,14 @@ class PacketSniffer:
         print("Sniffer zaustavljen.")
 
     def _capture(self):
-        sniff(
-            iface=self.interface,
-            prn=self._handle_packet,
-            store=False,
-            stop_filter=lambda _: self._stop_flag.is_set(),
-        )
+        while not self._stop_flag.is_set():
+            sniff(
+                iface=self.interface,
+                prn=self._handle_packet,
+                store=False,
+                stop_filter=lambda _: self._stop_flag.is_set(),
+                timeout=1,
+            )
 
     def _handle_packet(self, packet):
         try:
