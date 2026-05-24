@@ -12,6 +12,9 @@ from analysis.analyzer import PacketAnalyzer
 
 app = Flask(__name__)
 
+EXPORTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "exports"))
+os.makedirs(EXPORTS_DIR, exist_ok=True)
+
 sniffer  = PacketSniffer(interface=None)
 analyzer = PacketAnalyzer()
 recent_packets = []
@@ -93,7 +96,9 @@ def packets():
 
 @app.route("/api/export/csv")
 def export_csv():
-    path = os.path.abspath("exports/packets.csv")
+    if not analyzer._rows:
+        return jsonify({"error": "Nema paketa za export. Pokrenite capture pre eksporta."}), 400
+    path = os.path.join(EXPORTS_DIR, "packets.csv")
     analyzer.export_csv(path)
     return send_file(path, as_attachment=True, download_name="packets.csv")
 
