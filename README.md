@@ -189,4 +189,4 @@ If capture still shows nothing, verify you have network activity (e.g. open a we
 
 ## Author
 
-**Uros Cvetkovski** — [uroscbor@gmail.com](mailto:uroscbor@gmail.com)
+**Uroš Cvetkovski** — [github.com/uros-cvetkovski](https://github.com/uros-cvetkovski)
